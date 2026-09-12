@@ -1,0 +1,48 @@
+# --- Credentials / secrets ---
+.env
+*.env
+!*.example
+
+# --- Local application logs (JSONL fallbacks) ---
+logs/
+*.log
+*.jsonl
+
+# --- Python cache ---
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Jupyter / notebook checkpoints ---
+.ipynb_checkpoints/
+
+# --- Model artifacts ---
+# The serialized model/preprocessor ARE deliberately tracked because the
+# application loads them at runtime. The notebooks remain the canonical
+# training record; these blobs are the deployable inference assets.
+artifacts/*.joblib
+!artifacts/fraud_model_xgboost.joblib
+!artifacts/preprocessor.joblib
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# --- Temporary files ---
+*.tmp
+*.bak
+_tmp_*
+.tmp_xgb*/
+*.tmp.py
