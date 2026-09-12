@@ -1,0 +1,47 @@
+{
+  "raw_feature_columns": [
+    "type",
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "log_amount",
+    "errorBalanceOrig",
+    "errorBalanceDest",
+    "isDestMerchant"
+  ],
+  "categorical_columns": [
+    "type"
+  ],
+  "numeric_columns": [
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "log_amount",
+    "errorBalanceOrig",
+    "errorBalanceDest",
+    "isDestMerchant"
+  ],
+  "encoded_feature_columns": [
+    "type_CASH_IN",
+    "type_CASH_OUT",
+    "type_DEBIT",
+    "type_PAYMENT",
+    "type_TRANSFER",
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "log_amount",
+    "errorBalanceOrig",
+    "errorBalanceDest",
+    "isDestMerchant"
+  ],
+  "dropped_columns": [
+    "step",
+    "nameOrig",
+    "nameDest",
+    "amount"
+  ]
+}

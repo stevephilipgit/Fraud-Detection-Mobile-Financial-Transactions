@@ -1,0 +1,26 @@
+{
+  "model_name": "XGBoost (naive)",
+  "model_type": "XGBClassifier",
+  "artifact_status": "available_inference_artifact",
+  "notebook_final_threshold": 0.01,
+  "artifact_threshold": 0.44,
+  "artifact_notebook_metric_match": false,
+  "artifact_provenance_note": "The finalized notebook records threshold 0.01 and canonical metrics, but this serialized inference artifact was generated separately and does not reproduce the notebook's exact final confusion matrix.",
+  "selected_threshold": 0.44,
+  "export_timestamp": "2026-09-11T18:02:26.662395",
+  "final_test_metrics": {
+    "accuracy": 0.9982054733064154,
+    "precision": 1.0,
+    "recall": 0.9824561403508771,
+    "f1": 0.9911504424778761,
+    "roc_auc": 0.9985073252847261,
+    "pr_auc": 0.9949331911834415,
+    "confusion_matrix": {
+      "TN": 2001,
+      "FP": 0,
+      "FN": 4,
+      "TP": 224
+    }
+  },
+  "investigation_cost_assumption": 500
+}
