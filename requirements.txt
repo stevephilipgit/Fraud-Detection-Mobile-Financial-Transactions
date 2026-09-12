@@ -1,0 +1,25 @@
+# Application layer (matches the environment the finalized notebook ran in)
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+python-dotenv
+
+# UI
+streamlit
+
+# MySQL (SQLAlchemy + PyMySQL — used by database layer and CSV loader)
+SQLAlchemy
+PyMySQL
+
+# Required by PyMySQL for MySQL 8's default caching_sha2_password auth
+cryptography
+
+# Testing
+pytest
+
+# Notebook tooling / analysis used by fraud_capstone_final.ipynb
+matplotlib
+seaborn
+shap
