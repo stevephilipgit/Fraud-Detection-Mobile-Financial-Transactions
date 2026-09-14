@@ -68,6 +68,17 @@ NUMERIC_TRANSACTION_FIELDS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Uploaded Inference Data — session-scoped CSV batch scoring (demo bounds)
+# ---------------------------------------------------------------------------
+# Demo-oriented upper bounds only. Larger uploads are simply rejected because
+# the frozen inference path deliberately scores one transaction at a time.
+UPLOAD_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+UPLOAD_MAX_ROWS = 5000               # 5,000 rows
+
+# The original model-development dataset used by the exact-overlap check.
+INFERENCE_REFERENCE_CSV = PROJECT_ROOT / "Fraud_Analysis_Dataset.csv"
+
+# ---------------------------------------------------------------------------
 # MySQL connection (via environment variables — never hardcoded credentials)
 # ---------------------------------------------------------------------------
 DB_HOST = os.getenv("DB_HOST", "localhost")
