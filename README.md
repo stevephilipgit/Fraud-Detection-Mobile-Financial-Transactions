@@ -28,7 +28,8 @@ Fraud can cause serious financial losses for customers and providers. The goal i
 - A Streamlit web application
 - MySQL transaction storage
 - Prediction logging for every scored transaction
-- Batch scoring of recent transactions
+- Batch scoring of recent transactions from MySQL (historical/replay data)
+- Uploaded Inference Data: score any uploaded PaySim-style CSV with the frozen saved model
 - Basic monitoring of prediction logs
 - Basic drift analysis of incoming data
 - Automated tests
@@ -60,14 +61,76 @@ The dataset is synthetic and PaySim-like, so these results should NOT be treated
 ## Application flow
 
 ```
-Transaction
+Single transaction (Fraud Check)
 → feature preparation
 → saved preprocessing pipeline
 → XGBoost model
 → fraud probability
 → fraud / legitimate decision
-→ MySQL prediction log
+→ MySQL prediction log (or JSONL fallback when MySQL is unavailable)
+
+Uploaded CSV (Batch Scoring → Uploaded Inference Data)
+→ validate columns/rows/labels
+→ exact-record overlap check vs the original dataset
+→ saved preprocessing pipeline (transform only)
+→ XGBoost model (predict only)
+→ predictions (temporary, session-scoped)
+→ optional evaluation when the CSV contains isFraud (used AFTER prediction only)
+→ optional prediction logging
 ```
+
+## Uploaded Inference Data
+
+Batch Scoring has two clearly separated modes:
+
+1. **MySQL Historical Data** — scores the most recent rows in the existing
+   MySQL `transactions` table exactly as before. These rows come from the
+   original `Fraud_Analysis_Dataset.csv` (11,142 rows), so they are
+   **historical/replay data**, not new transactions.
+2. **Uploaded Inference Data** — you upload any PaySim-style CSV and every row
+   is scored one at a time through the same frozen saved model and
+   preprocessing pipeline. The previous upload is replaced; uploads are
+   temporary and session-scoped and are **never written to MySQL**.
+
+### Required CSV columns
+
+```
+type, amount, oldbalanceOrg, newbalanceOrig, oldbalanceDest, newbalanceDest, nameDest
+```
+
+### Optional source columns (allowed, never used as model inputs)
+
+```
+step, nameOrig, isFraud, transaction_id
+```
+
+`isFraud` (when present) is held completely out of the model. It is used only
+**after** prediction to show confusion-matrix metrics (TP/TN/FP/FN, accuracy,
+precision, recall, F1). Unlabeled CSVs show predictions only — labels are never
+invented.
+
+Unexpected columns are rejected, never silently dropped. One invalid row
+rejects the whole file with a row-level error report.
+
+### Exact-overlap note
+
+Uploaded rows are compared (by a deterministic canonical hash of the seven raw
+inference fields) against the original 11,142-row model-development dataset.
+The UI reports "X of Y uploaded records exactly match records in the original
+dataset" (or "No exact duplicate records found"). **This detects exact
+duplicate records only — it does not prove that the data is "unseen" or
+statistically/distributionally novel.** Uploaded data is therefore called
+"Uploaded Inference Data", never automatically "unseen data".
+
+### Limits and independence
+
+- Demo-oriented upload limits: **10 MB** and **5,000 rows**.
+- Inference uses only the saved artifacts (preprocessor + XGBoost + threshold
+  **0.44**), so uploaded inference works **even when MySQL is unavailable**.
+- MySQL is only involved if you click **Log Predictions** — and even then the
+  existing JSONL fallback is used when MySQL is down.
+- Scoring runs the canonical per-transaction `predict_raw()` path, so very
+  large uploads take longer; a progress bar is shown while scoring.
 
 ## Tech used
 
@@ -139,7 +202,8 @@ If MySQL is unavailable, predictions are still logged locally to a JSONL fallbac
 
 ## Testing
 
-The automated test suite passes (18 tests passed during validation).
+The automated test suite passes (47 tests passed during validation, including
+the Uploaded Inference Data workflow tests).
 
 ```bash
 python -m pytest -q
@@ -151,6 +215,9 @@ python -m pytest -q
 - This is a production-style prototype, not a live banking fraud system.
 - No automatic retraining.
 - Monitoring is basic.
+- Uploaded inference data is session-scoped only — it is not persisted.
+- The exact-overlap check detects exact duplicate records only; it does not
+  prove that uploaded data is statistically or distributionally novel.
 - The financial impact analysis uses illustrative assumptions.
 - The saved prediction artifact uses a different threshold (0.44) than the analytical notebook's selected threshold (0.01), so live predictions may differ slightly from the notebook's reported results.
 
