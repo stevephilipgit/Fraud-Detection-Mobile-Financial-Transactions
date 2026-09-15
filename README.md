@@ -149,7 +149,7 @@ statistically/distributionally novel.** Uploaded data is therefore called
 
 ```
 artifacts/                    saved model, preprocessor, metadata
-src/                          application code (features, inference, database)
+src/                          application code (features, inference, database, upload inference)
 scripts/                      CSV → MySQL loader
 tests/                        automated tests
 app.py                        Streamlit application
