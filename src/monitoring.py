@@ -20,6 +20,8 @@ import datetime
 import json
 from typing import Any, Dict, Iterable, List, Optional
 
+import pandas as pd
+
 from src import config, database
 
 MONITORING_FALLBACK_PATH = config.LOGS_DIR / "monitoring_fallback.jsonl"
@@ -50,6 +52,7 @@ def compute_summary(logs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "fraud_percentage": round(_safe_div(fraud_count * 100.0, total) or 0.0, 4),
         "average_probability": round(sum(probabilities) / total, 6) if total else 0.0,
         "labels_available": False,
+        "accuracy": None,
         "precision": None,
         "recall": None,
         "f1": None,
@@ -74,6 +77,7 @@ def compute_summary(logs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             {
                 "labels_available": True,
                 "labelled_count": len(labelled),
+                "accuracy": round(_safe_div(tp + tn, len(labelled)), 4),
                 "precision": round(precision, 4) if precision is not None else None,
                 "recall": round(recall, 4) if recall is not None else None,
                 "f1": round(f1, 4) if f1 is not None else None,
@@ -154,3 +158,26 @@ def collect_logs() -> List[Dict[str, Any]]:
     from src import logging_utils
 
     return logging_utils.read_jsonl_fallback()
+
+
+def daily_volume(rows: Iterable[Dict[str, Any]]) -> pd.DataFrame:
+    """Prediction counts grouped by calendar day (volume over time)."""
+    counts: Dict[str, int] = {}
+    for r in rows:
+        ts = r.get("timestamp")
+        day = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+        counts[day] = counts.get(day, 0) + 1
+    if not counts:
+        return pd.DataFrame(columns=["date", "predictions"])
+    return pd.DataFrame(sorted(counts.items()), columns=["date", "predictions"])
+
+
+def source_breakdown(rows: Iterable[Dict[str, Any]]) -> pd.DataFrame:
+    """Prediction counts grouped by inference-batch source."""
+    counts: Dict[str, int] = {}
+    for r in rows:
+        source = r.get("batch_source") or "legacy"
+        counts[source] = counts.get(source, 0) + 1
+    return pd.DataFrame(
+        [{"source": k, "predictions": v} for k, v in sorted(counts.items())]
+    )
