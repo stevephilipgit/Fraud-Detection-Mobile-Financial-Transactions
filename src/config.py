@@ -95,3 +95,17 @@ PSI_OK = 0.10          # PSI < 0.10          -> no significant drift
 PSI_WARNING = 0.25     # 0.10 <= PSI < 0.25  -> moderate drift, investigate
                        # PSI >= 0.25         -> significant drift
 CATEGORICAL_DRIFT_THRESHOLD = 0.05  # max absolute share change per category
+
+# ---------------------------------------------------------------------------
+# Inference batches / Monitoring scope / Drift
+# ---------------------------------------------------------------------------
+BATCH_SOURCE_UPLOADED = "uploaded_csv"
+BATCH_SOURCE_FRAUD_CHECK = "fraud_check"
+BATCH_SOURCE_HISTORICAL_REPLAY = "historical_replay"
+BATCH_SOURCE_LEGACY = "legacy"
+
+# Sources shown in the default (production-style) Monitoring scope.
+MONITORING_DEFAULT_SOURCES = (BATCH_SOURCE_UPLOADED, BATCH_SOURCE_FRAUD_CHECK)
+
+# Minimum rows for a meaningful drift comparison (prototype heuristic).
+MIN_DRIFT_ROWS = 30

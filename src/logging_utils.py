@@ -31,6 +31,7 @@ def log_prediction(
     result: Dict[str, Any],
     transaction_reference: str = None,
     actual_label: int = None,
+    batch_id: int = None,
 ) -> Dict[str, Any]:
     """Log one prediction result (as returned by inference.predict_transaction).
 
@@ -55,6 +56,7 @@ def log_prediction(
         "model_version": result["model_version"],
         "actual_label": actual_label,
         "latency_ms": float(result.get("latency_ms", 0.0)) if result.get("latency_ms") is not None else None,
+        "batch_id": batch_id,
     }
 
     # Preferred destination: MySQL
