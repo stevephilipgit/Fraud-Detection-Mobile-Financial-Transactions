@@ -226,7 +226,7 @@ requirements.txt              Python dependencies
 
 ## MySQL
 
-Database: `bia_fraud_detection`
+Database: `fraud_detection`
 
 Tables:
 
