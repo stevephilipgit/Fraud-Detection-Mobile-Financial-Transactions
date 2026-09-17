@@ -172,7 +172,7 @@ def init_database() -> None:
     """Initialize the application database safely and idempotently.
 
     1. Connect to the MySQL server-level endpoint (no database selected).
-    2. CREATE DATABASE IF NOT EXISTS bia_fraud_detection
+    2. CREATE DATABASE IF NOT EXISTS fraud_detection
     3. Reconnect to the application database.
     4. Ensure transactions / prediction_logs / model_monitoring exist
        (CREATE TABLE IF NOT EXISTS via create_tables).
