@@ -28,10 +28,11 @@ Fraud can cause serious financial losses for customers and providers. The goal i
 - A Streamlit web application
 - MySQL transaction storage
 - Prediction logging for every scored transaction
-- Batch scoring of recent transactions from MySQL (historical/replay data)
 - Uploaded Inference Data: score any uploaded PaySim-style CSV with the frozen saved model
-- Basic monitoring of prediction logs
-- Basic drift analysis of incoming data
+- Inference history: every scored upload batch is persisted with a batch ID (Historical Data)
+- Cleanup: delete a single inference batch, or the legacy prediction rows, from the Historical Data tab
+- Monitoring of actual inference activity (batch-aware, with labeled performance when ground truth exists)
+- Drift analysis: fixed training reference vs the latest scored inference batch
 - Automated tests
 
 ## Model
@@ -74,23 +75,57 @@ Uploaded CSV (Batch Scoring → Uploaded Inference Data)
 → exact-record overlap check vs the original dataset
 → saved preprocessing pipeline (transform only)
 → XGBoost model (predict only)
-→ predictions (temporary, session-scoped)
+→ persisted as an inference batch (Historical Data, Monitoring, Drift)
 → optional evaluation when the CSV contains isFraud (used AFTER prediction only)
-→ optional prediction logging
 ```
+
+## Inference history, Monitoring, and Drift
+
+- **MySQL Historical Data** now shows *previously scored inference activity*: every
+  scored uploaded CSV becomes an inference batch (batch ID, source, filename, row
+  count, fraud count, labeled status) with its predictions stored in
+  `prediction_logs`. The original `transactions` table is never re-scored or modified.
+- **Monitoring** shows what the model has actually been doing: prediction totals,
+  fraud counts, average probability, the latest batch, volume over time, and a
+  source/batch breakdown. Old pre-redesign test records are preserved but hidden
+  behind an "Include legacy records" toggle.
+- **Drift** compares the fixed training reference (the full original dataset) against
+  the latest/selected scored inference batch — never another slice of the training
+  data. If ground truth (`isFraud`) is available in a batch, it is stored per
+  prediction (`actual_label`, after prediction only) and Monitoring shows
+  accuracy/precision/recall/F1 and the confusion matrix.
+- Old smoke-test/fallback records are **preserved by default**; they are classified
+  as legacy (no inference batch) and hidden behind the "Include legacy records"
+  toggle. They are removed only if you explicitly use **Delete legacy records**.
 
 ## Uploaded Inference Data
 
 Batch Scoring has two clearly separated modes:
 
-1. **MySQL Historical Data** — scores the most recent rows in the existing
-   MySQL `transactions` table exactly as before. These rows come from the
-   original `Fraud_Analysis_Dataset.csv` (11,142 rows), so they are
-   **historical/replay data**, not new transactions.
+1. **MySQL Historical Data** — shows *previously scored inference activity*. Every
+   successfully scored upload is persisted as an inference batch, and this tab
+   lists those batches (newest first) together with their stored predictions.
+   The original `transactions` table (the 11,142-row source/training dataset) is
+   never re-scored and is never modified.
 2. **Uploaded Inference Data** — you upload any PaySim-style CSV and every row
    is scored one at a time through the same frozen saved model and
-   preprocessing pipeline. The previous upload is replaced; uploads are
-   temporary and session-scoped and are **never written to MySQL**.
+   preprocessing pipeline. On success the batch is persisted automatically with
+   a batch ID — there is no manual "Log Predictions" step for uploads. Each new
+   upload replaces the previous active upload; re-uploading the same file (or
+   the same records in a different row order) reuses the existing batch instead
+   of creating a duplicate.
+
+### Cleanup (deleting test data)
+
+- **Delete this batch** (MySQL Historical Data tab) removes one inference batch
+  together with its own predictions, in a single database transaction (commit
+  on success, rollback on failure). Other batches, the model, and the source
+  dataset are not affected. A confirmation is always required first.
+- **Delete legacy records** removes only prediction rows that have no inference
+  batch (`batch_id IS NULL` — pre-redesign/test data). A normal batch delete
+  never touches legacy rows, and legacy deletion never touches inference batches.
+- Deletes are always scoped to the requested `batch_id` using parameterized
+  queries — there are no broad "delete everything" statements.
 
 ### Required CSV columns
 
@@ -153,6 +188,7 @@ src/                          application code (features, inference, database, u
 scripts/                      CSV → MySQL loader
 tests/                        automated tests
 app.py                        Streamlit application
+ui_presentation.py            Streamlit UI helpers (pages, metrics, formatting)
 fraud_capstone_final.ipynb    analysis and model training notebook
 Fraud_Analysis_Dataset.csv    synthetic dataset
 requirements.txt              Python dependencies
@@ -194,16 +230,18 @@ Database: `bia_fraud_detection`
 
 Tables:
 
-- `transactions` — stores the raw transaction rows loaded from the dataset.
-- `prediction_logs` — stores one row per prediction made by the application (probability, decision, features, latency, and more).
+- `transactions` — the original 11,142-row source/training dataset. Read-only for the application; never used as inference history.
+- `inference_batches` — one row per scored inference batch (source, filename, content/dataset hashes, row and fraud counts, labeled flag). Uploaded batches are persisted here automatically.
+- `prediction_logs` — stores one row per prediction (probability, decision, features, latency), linked to its batch via `batch_id`, with `actual_label` when the uploaded CSV provided ground truth.
 - `model_monitoring` — stores monitoring snapshots of the prediction logs.
 
 If MySQL is unavailable, predictions are still logged locally to a JSONL fallback file, so no prediction is ever lost silently.
 
 ## Testing
 
-The automated test suite passes (47 tests passed during validation, including
-the Uploaded Inference Data workflow tests).
+The automated test suite passes (81 tests: the original suite plus tests for
+inference batches, legacy scoping, labeled evaluation, drift, the snapshot fix,
+and safe batch/legacy deletion).
 
 ```bash
 python -m pytest -q
@@ -215,7 +253,10 @@ python -m pytest -q
 - This is a production-style prototype, not a live banking fraud system.
 - No automatic retraining.
 - Monitoring is basic.
-- Uploaded inference data is session-scoped only — it is not persisted.
+- A scored upload is persisted as an inference batch (inference_batches +
+  prediction_logs); the parsed file itself is session-scoped. Inference
+  history therefore needs MySQL, and batches can be deleted from the
+  Historical Data page.
 - The exact-overlap check detects exact duplicate records only; it does not
   prove that uploaded data is statistically or distributionally novel.
 - The financial impact analysis uses illustrative assumptions.
