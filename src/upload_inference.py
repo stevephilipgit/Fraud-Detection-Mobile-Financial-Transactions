@@ -20,6 +20,7 @@ evaluation. Uploaded data is session-scoped and is never written to MySQL.
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import io
 from collections.abc import MutableMapping
@@ -29,7 +30,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 import numpy as np
 import pandas as pd
 
-from src import config, features
+from src import config, database, features
 
 # ---------------------------------------------------------------------------
 # CSV column contract (locked)
@@ -472,3 +473,136 @@ def log_results(
 def was_logged(session: MutableMapping, dataset_hash: str) -> bool:
     """True when the current upload's predictions were already logged once."""
     return session.get("inference_logged_dataset_hash") == dataset_hash
+
+
+# ---------------------------------------------------------------------------
+# Inference-batch persistence (scored uploads become inference history)
+# ---------------------------------------------------------------------------
+def persist_scored_batch(
+    content_hash: str,
+    dataset_hash: str,
+    label: str,
+    raw_df: pd.DataFrame,
+    results: List[Dict[str, Any]],
+    labels: Optional[pd.Series] = None,
+) -> Dict[str, Any]:
+    """Persist a scored uploaded batch as inference history.
+
+    Returns {"status": "saved"|"reused"|"unavailable", "batch_id", "message"}:
+
+    - MySQL unavailable  -> status "unavailable"; NOTHING is written and the
+      batch is NOT converted into a historical batch (never a silent fallback).
+    - content_hash match -> the existing batch is reused (no duplicate rows).
+    - dataset_hash match (same records, different order) -> existing batch reused.
+    - otherwise a new batch is created and every scored row is persisted with
+      batch_id and (when provided) actual_label — ground truth associated
+      AFTER prediction; isFraud never reaches the model.
+    """
+    if not database.is_available():
+        return {
+            "status": "unavailable",
+            "batch_id": None,
+            "message": (
+                "Prediction completed, but inference history could not be saved "
+                "because MySQL is unavailable. Start MySQL and retry."
+            ),
+        }
+
+    scored = [r for r in results if r.get("result") is not None]
+    if not scored:
+        return {
+            "status": "unavailable",
+            "batch_id": None,
+            "message": "No scored rows to persist.",
+        }
+
+    existing = database.get_batch_by_content_hash(
+        content_hash, source=config.BATCH_SOURCE_UPLOADED
+    )
+    if existing:
+        return {
+            "status": "reused",
+            "batch_id": existing["batch_id"],
+            "message": (
+                f"This dataset was already scored as inference batch "
+                f"#{existing['batch_id']}."
+            ),
+        }
+
+    existing = database.get_batch_by_dataset_hash(
+        dataset_hash, source=config.BATCH_SOURCE_UPLOADED
+    )
+    if existing:
+        return {
+            "status": "reused",
+            "batch_id": existing["batch_id"],
+            "message": (
+                f"These records were already scored as inference batch "
+                f"#{existing['batch_id']} (different row order) — reusing it."
+            ),
+        }
+
+    probabilities = [float(r["result"]["fraud_probability"]) for r in scored]
+    fraud_count = sum(int(r["result"]["prediction"]) for r in scored)
+    avg = (sum(probabilities) / len(probabilities)) if probabilities else None
+
+    batch_id = database.create_inference_batch(
+        source=config.BATCH_SOURCE_UPLOADED,
+        label=label,
+        content_hash=content_hash,
+        dataset_hash=dataset_hash,
+        row_count=len(scored),
+        fraud_count=fraud_count,
+        avg_fraud_probability=avg,
+        has_ground_truth=labels is not None,
+    )
+
+    entries = []
+    for r in scored:
+        i = int(r["row_index"])
+        res = r["result"]
+        entry = {
+            "timestamp": datetime.datetime.now(),
+            "transaction_reference": str(raw_df.iloc[i]["nameDest"]),
+            "raw_transaction": res.get("raw_transaction"),
+            "engineered_features": res.get("engineered_features"),
+            "fraud_probability": float(res["fraud_probability"]),
+            "predicted_class": int(res["prediction"]),
+            "threshold": float(res["threshold"]),
+            "model_version": res.get("model_version"),
+            "latency_ms": (
+                float(res["latency_ms"]) if res.get("latency_ms") is not None else None
+            ),
+            "batch_id": batch_id,
+            "actual_label": None,
+        }
+        if labels is not None:
+            value = labels.iloc[i] if hasattr(labels, "iloc") else labels[i]
+            entry["actual_label"] = int(value)
+        entries.append(entry)
+
+    database.insert_batch_predictions(entries)
+    return {
+        "status": "saved",
+        "batch_id": batch_id,
+        "message": f"Inference batch #{batch_id} saved ({len(entries)} predictions).",
+    }
+
+
+def load_batch_frame(batch_id: int) -> pd.DataFrame:
+    """Engineered model-input frame for a persisted batch (Drift 'current')."""
+    raws = database.fetch_batch_raw_transactions(batch_id)
+    if not raws:
+        return pd.DataFrame(columns=list(INFERENCE_COLUMNS))
+    return features.engineer_features(pd.DataFrame(raws))
+
+
+def meets_min_rows(row_count: int):
+    """Drift availability gate (prototype heuristic minimum)."""
+    minimum = config.MIN_DRIFT_ROWS
+    if int(row_count) >= minimum:
+        return True, ""
+    return False, (
+        f"Latest batch has {row_count} rows — at least {minimum} are required "
+        "for a meaningful drift comparison."
+    )
